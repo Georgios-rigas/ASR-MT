@@ -1,0 +1,9 @@
+streamlit
+pandas
+plotly
+openpyxl
+openai-whisper
+transformers
+torch
+ffmpeg-python
+jiwer
