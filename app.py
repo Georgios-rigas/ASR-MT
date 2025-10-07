@@ -558,29 +558,31 @@ if metrics_df is not None and translations_df is not None:
                                                     expected_text.lower()).ratio()
                         st.metric("Similarity", f"{similarity:.2%}")
                 
-                with col2:
-                    st.markdown("###  English Translation")
+            # CORRECTED CODE BLOCK
+
+            with col2:
+                st.markdown("###  English Translation")
+                
+                if st.session_state.translation:
+                    # Predicted translation
+                    st.markdown("**Generated:**")
+                    st.info(st.session_state.translation)
                     
-                    if st.session_state.translation:
-                        # Predicted translation
-                        st.markdown("**Generated:**")
-                        st.info(st.session_state.translation)
+                    # Expected translation (if available)
+                    if expected_translation:
+                        st.markdown("**Expected:**")
+                        # FIX: Use the correct variable that holds the English text
+                        st.success(expected_translation)
                         
-                        # Expected translation (if available)
-                        if expected_translation:
-                            st.markdown("**Expected:**")
-                            st.success(expected_translation)
-                            
-                            # Calculate similarity
-                            from difflib import SequenceMatcher
-                            similarity = SequenceMatcher(None, 
-                                                        st.session_state.translation.lower(), 
-                                                        expected_translation.lower()).ratio()
-                            st.metric("Similarity", f"{similarity:.2%}")
-                    else:
-                        # MODIFICATION: This block now only shows the generated placeholder
-                        st.markdown("**Generated:**")
-                        st.info("Click 'Translate' button to generate translation.")
+                        # Calculate similarity
+                        from difflib import SequenceMatcher
+                        similarity = SequenceMatcher(None, 
+                                                    st.session_state.translation.lower(), 
+                                                    expected_translation.lower()).ratio()
+                        st.metric("Similarity", f"{similarity:.2%}")
+                else:
+                    st.markdown("**Generated:**")
+                    st.info("Click 'Translate' button to generate translation.")
                         
         else:
             st.warning("⚠️ Waiting for required libraries to be installed...")
