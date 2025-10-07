@@ -419,10 +419,6 @@ if metrics_df is not None and translations_df is not None:
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 local_audio_path = os.path.join(base_dir, "local_corpus", "audio")
 
-                # Debug output
-                st.write(f"Base directory: {base_dir}")
-                st.write(f"Looking for audio in: {local_audio_path}")
-                st.write(f"Path exists: {os.path.exists(local_audio_path)}")
                 audio_files = []
                 
                 if os.path.exists(local_audio_path):
