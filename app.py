@@ -23,10 +23,10 @@ except ImportError:
     jiwer_available = False
 
 # Set page config
-st.set_page_config(page_title="Translation Analysis Dashboard", layout="wide")
+st.set_page_config(page_title="ASR-MT DEMO", layout="wide")
 
 # Title
-st.title("🌐 Translation Model Analysis Dashboard")
+st.title("🌐 ASR-MT DEMO")
 
 # Helper function to clean strings for accurate comparison
 def clean_string(text):
@@ -87,7 +87,7 @@ metrics_df, translations_df = load_data()
 
 if metrics_df is not None and translations_df is not None:
     # Create tabs for different views
-    tab1, tab2, tab3 = st.tabs(["🎤 Audio Transcription & Translation","📊 Model Metrics Overview", "📝 Translation Comparison"])
+    tab1, tab2, tab3 = st.tabs(["Audio Transcription & Translation Inference","Translation Performance Overview", "Translation Models Inference"])
 
     
 
