@@ -28,6 +28,12 @@ st.set_page_config(page_title="ASR-MT DEMO", layout="wide")
 # Title
 st.title("🌐 ASR-MT DEMO")
 
+FINETUNING_METRICS = {
+    "Icelandic": {"hours_train": 2.85, "base_wer": 57.52, "ft_wer": 37.99},
+    "Belarusian": {"hours_train": 9.52, "base_wer": 71.70, "ft_wer": 17.72},
+    "Nepali": {"hours_train": 12.51, "base_wer": 85.14, "ft_wer": 34.68}
+}
+
 # Helper function to clean strings for accurate comparison
 def clean_string(text):
     """
@@ -597,9 +603,9 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_metrics
     # VIEW 4: Low-Resource Fine-Tuning Analysis (from Excel files)
     # ==============================================================
     with tab4:
-        st.header("Low-Resource Fine-Tuning Analysis")
+        st.header("🔬 Low-Resource Fine-Tuning Analysis")
 
-        language_names = finetuning_metrics_df['Language'].unique()
+        language_names = list(FINETUNING_METRICS.keys())
         
         selected_language_name = st.selectbox(
             "Select a Fine-Tuned Language",
@@ -607,13 +613,15 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_metrics
             key='lang_ft_select'
         )
 
-        # Filter data for the selected language from both dataframes
-        metrics_data = finetuning_metrics_df[finetuning_metrics_df['Language'] == selected_language_name].iloc[0]
+        # Get the hardcoded metrics for the selected language
+        metrics_data = FINETUNING_METRICS[selected_language_name]
+        
+        # Filter the loaded examples dataframe for the selected language
         examples_data = finetuning_examples_df[finetuning_examples_df['Language'] == selected_language_name]
 
         st.subheader(f"Performance for {selected_language_name}")
 
-        # --- High-Level Metrics ---
+        # --- High-Level Metrics (from hardcoded data) ---
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Training Hours", f"{metrics_data['hours_train']:.2f} hrs")
@@ -624,7 +632,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_metrics
                       delta=f"{metrics_data['base_wer'] - metrics_data['ft_wer']:.2f}% improvement",
                       delta_color="inverse")
 
-        # --- WER Improvement Visualization ---
+        # --- WER Improvement Visualization (from hardcoded data) ---
         st.subheader("WER Improvement")
         fig_wer_ft = go.Figure(data=[
             go.Bar(name='Base Model', x=[selected_language_name], y=[metrics_data['base_wer']], text=f"{metrics_data['base_wer']:.2f}%", textposition='auto'),
@@ -639,35 +647,27 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_metrics
         )
         st.plotly_chart(fig_wer_ft, use_container_width=True)
 
-        # --- Transcription Examples Table (from Excel) ---
+        # --- Transcription Examples Table (from loaded Excel file) ---
         st.subheader("Transcription Examples")
         
-        # Display the filtered DataFrame, dropping the now-redundant 'Language' column
         st.dataframe(
             examples_data.drop(columns=['Language']),
             use_container_width=True,
-            height=210 # Adjusted height for 5 examples
+            height=210
         )
 
-# Add sidebar information
+# --- Sidebar ---
 with st.sidebar:
     st.header("About")
     st.info("""
-    This dashboard analyzes translation model performance across different languages.
+    This dashboard analyzes ASR and MT model performance.
     
     **Metrics Explained:**
     - **WER (Word Error Rate):** Lower is better
     - **BLEU Score:** Higher is better (0-1 scale)
-    - **Time:** Translation time in seconds
-    
-    **Data Sources:**
-    - metrics.xlsx: Overall model performance
-    - translations.xlsx: Individual translation examples
+    - **Time:** Inference time in seconds
     """)
-    
     if metrics_df is not None:
         st.header("Dataset Summary")
-        st.metric("Total Models", metrics_df['model'].nunique())
-        st.metric("Languages", metrics_df['Language'].nunique())
-        st.metric("Test Samples per Model", metrics_df['samples_tested'].iloc[0])
-
+        st.metric("Total Models Tested", metrics_df['model'].nunique())
+        st.metric("Languages Tested", metrics_df['Language'].nunique())
