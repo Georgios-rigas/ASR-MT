@@ -81,14 +81,14 @@ def load_data():
     try:
         metrics_df = pd.read_excel('metrics.xlsx')
         translations_df = pd.read_excel('translations.xlsx')
-        finetuning_metrics_df = pd.read_excel('finetuning_results.xlsx')
+        # We only load the examples file for the fine-tuning tab now
         finetuning_examples_df = pd.read_excel('finetuning_examples.xlsx')
-        return metrics_df, translations_df, finetuning_metrics_df, finetuning_examples_df
+        return metrics_df, translations_df, finetuning_examples_df
     except FileNotFoundError as e:
-        st.error(f"Error: A required data file is missing. Please ensure 'metrics.xlsx', 'translations.xlsx', 'finetuning_results.xlsx', and 'finetuning_examples.xlsx' are all present. Missing file: {e.filename}")
-        return None, None, None, None
+        st.error(f"Error: A required data file is missing. Please ensure 'metrics.xlsx', 'translations.xlsx', and 'finetuning_examples.xlsx' are all present. Missing file: {e.filename}")
+        return None, None, None
 
-metrics_df, translations_df, finetuning_metrics_df, finetuning_examples_df = load_data()
+metrics_df, translations_df, finetuning_examples_df = load_data()
 
 
 # --- Main App Body ---
