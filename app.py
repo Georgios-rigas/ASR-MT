@@ -68,26 +68,32 @@ def calculate_word_match_ratio(reference, generated):
     except Exception:
         return 0.0
 
-# Load data function
+# --- Load external data files ---
 @st.cache_data
 def load_data():
-    """Load both Excel files"""
+    """Loads all required Excel files for the dashboard."""
     try:
-        # Load metrics data (first Excel)
         metrics_df = pd.read_excel('metrics.xlsx')
-        # Load translations data (second Excel)
         translations_df = pd.read_excel('translations.xlsx')
-        return metrics_df, translations_df
-    except FileNotFoundError:
-        st.error("Please ensure both 'metrics.xlsx' and 'translations.xlsx' are in the same directory as this script.")
-        return None, None
+        finetuning_metrics_df = pd.read_excel('finetuning_results.xlsx')
+        finetuning_examples_df = pd.read_excel('finetuning_examples.xlsx')
+        return metrics_df, translations_df, finetuning_metrics_df, finetuning_examples_df
+    except FileNotFoundError as e:
+        st.error(f"Error: A required data file is missing. Please ensure 'metrics.xlsx', 'translations.xlsx', 'finetuning_results.xlsx', and 'finetuning_examples.xlsx' are all present. Missing file: {e.filename}")
+        return None, None, None, None
 
-# Load the data
-metrics_df, translations_df = load_data()
+metrics_df, translations_df, finetuning_metrics_df, finetuning_examples_df = load_data()
 
-if metrics_df is not None and translations_df is not None:
-    # Create tabs for different views
-    tab1, tab2, tab3 = st.tabs(["Audio Transcription & Translation Inference","Translation Performance Overview", "Translation Models Inference"])
+
+# --- Main App Body ---
+if all(df is not None for df in [metrics_df, translations_df, finetuning_metrics_df, finetuning_examples_df]):
+    # Create tabs
+    tab1, tab2, tab3, tab4 = st.tabs([
+        "Audio Transcription & Translation Inference",
+        "Translation Performance Overview",
+        "Translation Models Inference",
+        "Low-Resource Fine-Tuning"
+    ])
 
     
 
@@ -587,10 +593,61 @@ if metrics_df is not None and translations_df is not None:
             with col3:
                 st.metric("Fastest Translation", fastest_model)
 
+ # ==============================================================
+    # VIEW 4: Low-Resource Fine-Tuning Analysis (from Excel files)
+    # ==============================================================
+    with tab4:
+        st.header("Low-Resource Fine-Tuning Analysis")
 
-           
-else:
-    st.error("Unable to load data files. Please check that both Excel files are present.")
+        language_names = finetuning_metrics_df['Language'].unique()
+        
+        selected_language_name = st.selectbox(
+            "Select a Fine-Tuned Language",
+            options=language_names,
+            key='lang_ft_select'
+        )
+
+        # Filter data for the selected language from both dataframes
+        metrics_data = finetuning_metrics_df[finetuning_metrics_df['Language'] == selected_language_name].iloc[0]
+        examples_data = finetuning_examples_df[finetuning_examples_df['Language'] == selected_language_name]
+
+        st.subheader(f"Performance for {selected_language_name}")
+
+        # --- High-Level Metrics ---
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Training Hours", f"{metrics_data['hours_train']:.2f} hrs")
+        with col2:
+            st.metric("Base Model WER", f"{metrics_data['base_wer']:.2f}%")
+        with col3:
+            st.metric("Fine-Tuned WER", f"{metrics_data['ft_wer']:.2f}%", 
+                      delta=f"{metrics_data['base_wer'] - metrics_data['ft_wer']:.2f}% improvement",
+                      delta_color="inverse")
+
+        # --- WER Improvement Visualization ---
+        st.subheader("WER Improvement")
+        fig_wer_ft = go.Figure(data=[
+            go.Bar(name='Base Model', x=[selected_language_name], y=[metrics_data['base_wer']], text=f"{metrics_data['base_wer']:.2f}%", textposition='auto'),
+            go.Bar(name='Fine-Tuned Model', x=[selected_language_name], y=[metrics_data['ft_wer']], text=f"{metrics_data['ft_wer']:.2f}%", textposition='auto')
+        ])
+        fig_wer_ft.update_layout(
+            barmode='group',
+            title=f'Word Error Rate (WER) Comparison for {selected_language_name}',
+            yaxis_title='WER (%) - Lower is Better',
+            height=450,
+            legend=dict(orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=1)
+        )
+        st.plotly_chart(fig_wer_ft, use_container_width=True)
+
+        # --- Transcription Examples Table (from Excel) ---
+        st.subheader("Transcription Examples")
+        
+        # Display the filtered DataFrame, dropping the now-redundant 'Language' column
+        st.dataframe(
+            examples_data.drop(columns=['Language']),
+            use_container_width=True,
+            height=210 # Adjusted height for 5 examples
+        )
 
 # Add sidebar information
 with st.sidebar:
