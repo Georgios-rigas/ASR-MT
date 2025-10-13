@@ -92,7 +92,7 @@ metrics_df, translations_df, finetuning_examples_df = load_data()
 
 
 # --- Main App Body ---
-if all(df is not None for df in [metrics_df, translations_df, finetuning_metrics_df, finetuning_examples_df]):
+if all(df is not None for df in [metrics_df, translations_df, finetuning_examples_df]):
     # Create tabs
     tab1, tab2, tab3, tab4 = st.tabs([
         "Audio Transcription & Translation Inference",
