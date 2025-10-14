@@ -14,7 +14,6 @@ import re # Import the regular expression module for cleaning
 import os, shutil
 
 
-
 # Import jiwer for Word Error Rate and accuracy calculation
 try:
     import jiwer
@@ -110,14 +109,20 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
         os.environ["IMAGEIO_FFMPEG_EXE"] = ioff.get_ffmpeg_exe()
     except Exception as e:
         print("FFmpeg setup error:", e)
-    with tab1:
+with tab1:
         st.header("🎤 Audio Transcription & Translation")
-        
-        # Your original code for loading train.csv
+
+        # Force module loading with explicit path
+        import sys
+        sys.path.insert(0, '/opt/conda/lib/python3.12/site-packages')
+
+        # Try to load train.csv for expected values
         @st.cache_data
         def load_train_data():
+            """Load train.csv for expected transcriptions and translations"""
             try:
                 train_df = pd.read_csv('train.csv')
+                # Check if it has the expected columns
                 if 'path' in train_df.columns and 'text' in train_df.columns and 'text_en' in train_df.columns:
                     return train_df
                 else:
@@ -126,141 +131,236 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
             except FileNotFoundError:
                 st.warning("train.csv not found. Expected values won't be available.")
                 return None
+
         train_df = load_train_data()
-        
-        # Your original code for checking libraries
+
+        # Test if Whisper is available
+        whisper_available = False
         try:
+            import whisper
+            whisper_available = True
+            st.success("✅ Whisper loaded successfully")
+        except ImportError as e:
+            st.error(f"❌ Whisper import error: {e}")
+
+        # Test if transformers is available
+        transformers_available = False
+        try:
+            from transformers import pipeline
+            import torch
+            transformers_available = True
+            st.success("✅ Transformers loaded successfully")
+        except ImportError as e:
+            st.error(f"❌ Transformers import error: {e}")
+
+        if whisper_available and transformers_available:
             import whisper
             from transformers import pipeline
             import torch
-            libraries_available = True
-        except ImportError as e:
-            st.error(f"❌ Critical libraries are missing: {e}")
-            libraries_available = False
-        
-        if libraries_available:
-            # Your original UI layout
+
+            # Model selection
             col1, col2 = st.columns(2)
             with col1:
-                whisper_model_size = st.selectbox("Select Whisper Model Size", ["base", "small", "medium", "large"])
+                whisper_model_size = st.selectbox(
+                    "Select Whisper Model Size",
+                    options=["base", "small", "medium", "large"],
+                    help="Larger models are more accurate but slower"
+                )
+
             with col2:
-                translation_model = st.selectbox("Select Translation Model", ["Helsinki-NLP/opus-mt-es-en", "facebook/mbart-large-50-many-to-many-mmt"])
-            
-            uploaded_file = st.file_uploader("Upload a WAV audio file", type=['wav'])
+                translation_model = st.selectbox(
+                    "Select Translation Model",
+                    options=["opus-mt-es-en", "mbart-large-50-many-to-many-mmt"],
+                    help="Model for Spanish to English translation"
+                )
+
+            # File upload
+            uploaded_file = st.file_uploader(
+                "Upload a WAV audio file",
+                type=['wav'],
+                help="Upload a Spanish audio file for transcription and translation"
+            )
+
+            # Alternative: Select from local_corpus
             st.markdown("---")
-            
+
+            # MODIFICATION: Place selection in a smaller column
             col1, _ = st.columns(2)
             with col1:
                 st.subheader("Or select from local corpus")
-                local_audio_path = "local_corpus/audio"
+                import os
+                base_dir = os.path.dirname(os.path.abspath(__file__))
+                local_audio_path = os.path.join(base_dir, "local_corpus", "audio")
+
                 audio_files = []
+
                 if os.path.exists(local_audio_path):
                     audio_files = [f for f in os.listdir(local_audio_path) if f.endswith('.wav')]
-                selected_audio = st.selectbox("Select an audio file from corpus", ["None"] + audio_files)
+                    if audio_files:
+                        selected_audio = st.selectbox(
+                            "Select an audio file from corpus",
+                            options=["None"] + audio_files
+                        )
+                    else:
+                        st.info("No WAV files found in local_corpus/audio/")
+                        selected_audio = "None"
+                else:
+                    st.info("local_corpus/audio/ directory not found")
+                    selected_audio = "None"
 
+            # Process buttons - sized to be smaller
             col1, col2, _ = st.columns([1, 1, 2])
+
             with col1:
                 transcribe_button = st.button("🎙️ Transcribe Audio", type="primary", use_container_width=True)
+
             with col2:
                 translate_button = st.button("🌐 Translate", type="secondary", use_container_width=True, 
                                            disabled=not st.session_state.get('transcription_done', False))
-            
-            # Your original session state initialization, with ONE addition
+
+            # Initialize session state for transcription
             if 'transcription_done' not in st.session_state:
                 st.session_state.transcription_done = False
                 st.session_state.transcription = ""
                 st.session_state.translation = ""
                 st.session_state.audio_path = ""
-                st.session_state.audio_for_playback = None # <-- ONLY ADDITION
+                st.session_state.path_for_playback = None # <-- ONLY ADDITION FOR PLAYER
 
-            # Your original transcription logic, with ONE addition
+            # Process transcription
             if transcribe_button:
-                st.session_state.translation = ""
+                st.session_state.translation = "" # Clear previous translation
+
                 audio_to_process = None
-                audio_path_for_lookup = None
-                
+                audio_path = None
+
+                # Determine which audio to process
                 if uploaded_file is not None:
+                    # Save uploaded file temporarily
                     temp_path = f"temp_{uploaded_file.name}"
                     with open(temp_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
                     audio_to_process = temp_path
-                    audio_path_for_lookup = uploaded_file.name
+                    audio_path = uploaded_file.name
                 elif selected_audio != "None":
                     audio_to_process = os.path.join(local_audio_path, selected_audio)
-                    audio_path_for_lookup = f"local_corpus/audio/{selected_audio}"
-                
+                    audio_path = f"local_corpus/audio/{selected_audio}"
+
                 if audio_to_process:
-                    st.session_state.audio_for_playback = audio_to_process # <-- ONLY ADDITION
-                    st.session_state.audio_path = audio_path_for_lookup # This is your original line
-                    
-                    with st.spinner("Transcribing..."):
+                    st.session_state.path_for_playback = audio_to_process # <-- ONLY ADDITION FOR PLAYER
+                    with st.spinner("Transcribing audio with Whisper..."):
+                        # Load Whisper model
                         @st.cache_resource
-                        def load_whisper(model_size): return whisper.load_model(model_size)
-                        
-                        whisper_model = load_whisper(whisper_model_size)
-                        result = whisper_model.transcribe(audio_to_process, language="es")
-                        st.session_state.transcription = result["text"]
-                        st.session_state.transcription_done = True
-                        st.rerun()
+                        def load_whisper(model_size):
+                            return whisper.load_model(model_size)
+
+                        try:
+                            whisper_model = load_whisper(whisper_model_size)
+                            result = whisper_model.transcribe(audio_to_process, language="es")
+                            st.session_state.transcription = result["text"]
+                            st.session_state.transcription_done = True
+                            st.session_state.audio_path = audio_path
+                            st.rerun()
+
+                        except Exception as e:
+                            st.error(f"Error transcribing audio: {str(e)}")
+
+                        finally:
+                            # Clean up temp file if it was uploaded
+                            if uploaded_file is not None and os.path.exists(temp_path):
+                                os.remove(temp_path)
                 else:
-                    st.warning("Please upload or select an audio file.")
-            
-            # Your original translation logic - NO CHANGES
+                    st.warning("Please upload an audio file or select one from the corpus.")
+
+            # Process translation
             if translate_button and st.session_state.transcription_done:
-                with st.spinner("Translating..."):
+                with st.spinner("Translating to English..."):
+                    # Load translation model
                     @st.cache_resource
                     def load_translator(model_name):
-                        if "mbart" in model_name:
-                            return pipeline("translation", model=model_name, src_lang="es_XX", tgt_lang="en_XX")
-                        return pipeline("translation", model=model_name)
-                    
-                    translator = load_translator(translation_model)
-                    translation_result = translator(st.session_state.transcription, max_length=512)
-                    st.session_state.translation = translation_result[0]['translation_text']
-                    st.rerun()
+                        if model_name == "opus-mt-es-en":
+                            return pipeline("translation", model="Helsinki-NLP/opus-mt-es-en")
+                        else:
+                            return pipeline("translation", model="facebook/mbart-large-50-many-to-many-mmt", 
+                                          src_lang="es_XX", tgt_lang="en_XX")
 
-            # Your original results display, with ONE addition
+                    try:
+                        translator = load_translator(translation_model)
+                        translation_result = translator(st.session_state.transcription, max_length=512)
+                        st.session_state.translation = translation_result[0]['translation_text']
+                        st.rerun()
+
+                    except Exception as e:
+                        st.error(f"Error translating: {str(e)}")
+
+            # Display results if we have them
             if st.session_state.transcription_done:
                 st.markdown("---")
                 st.subheader("📊 Results")
-                
+
                 # --- START OF ADDED AUDIO PLAYER BLOCK ---
-                if st.session_state.audio_for_playback and os.path.exists(st.session_state.audio_for_playback):
-                    with open(st.session_state.audio_for_playback, 'rb') as audio_file:
+                if st.session_state.path_for_playback and os.path.exists(st.session_state.path_for_playback):
+                    with open(st.session_state.path_for_playback, 'rb') as audio_file:
                         st.audio(audio_file.read(), format='audio/wav')
                 # --- END OF ADDED AUDIO PLAYER BLOCK ---
 
-                # Your original logic for looking up and displaying all text and similarity - NO CHANGES
-                expected_text, expected_translation = "", ""
-                if train_df is not None and st.session_state.audio_path:
-                    match = train_df[train_df['path'].str.contains(os.path.basename(st.session_state.audio_path).replace('.wav', ''), na=False)]
-                    if not match.empty:
-                        expected_text = match.iloc[0]['text']
-                        expected_translation = match.iloc[0]['text_en']
+                # Get expected values if available
+                expected_text = ""
+                expected_translation = ""
 
+                if train_df is not None and st.session_state.audio_path:
+                    matching_row = train_df[train_df['path'].str.contains(
+                        os.path.basename(st.session_state.audio_path).replace('.wav', ''), 
+                        case=False, na=False
+                    )]
+
+                    if not matching_row.empty:
+                        expected_text = matching_row.iloc[0]['text']
+                        expected_translation = matching_row.iloc[0]['text_en']
+
+                # Display transcription and translation with expected values
                 col1, col2 = st.columns(2)
+
                 with col1:
                     st.markdown("### Spanish Transcription")
+
+                    # Predicted transcription
                     st.markdown("**Generated:**")
                     st.info(st.session_state.transcription)
+
+                    # Expected transcription (if available)
                     if expected_text:
                         st.markdown("**Expected:**")
                         st.success(expected_text)
-                        similarity = SequenceMatcher(None, clean_string(st.session_state.transcription), clean_string(expected_text)).ratio()
-                        st.metric("Similarity", f"{similarity:.2%}")
 
+                        # Calculate similarity
+                        from difflib import SequenceMatcher
+                        similarity = SequenceMatcher(None, 
+                                                    st.session_state.transcription.lower(), 
+                                                    expected_text.lower()).ratio()
+                        st.metric("Similarity", f"{similarity:.2%}")
+                
                 with col2:
                     st.markdown("### English Translation")
-                    st.markdown("**Generated:**")
+                    
                     if st.session_state.translation:
+                        # Predicted translation
+                        st.markdown("**Generated:**")
                         st.info(st.session_state.translation)
+                        
+                        # Expected translation (if available)
                         if expected_translation:
                             st.markdown("**Expected:**")
                             st.success(expected_translation)
-                            similarity = SequenceMatcher(None, clean_string(st.session_state.translation), clean_string(expected_translation)).ratio()
+                            
+                            # Calculate similarity
+                            from difflib import SequenceMatcher
+                            similarity = SequenceMatcher(None, 
+                                                        st.session_state.translation.lower(), 
+                                                        expected_translation.lower()).ratio()
                             st.metric("Similarity", f"{similarity:.2%}")
                     else:
-                        st.info("Click 'Translate' button to generate.")
+                        st.markdown("**Generated:**")
+                        st.info("Click 'Translate' button to generate translation.")
       # ==========================
     # VIEW 1: Model Metrics Overview
     # ==========================
