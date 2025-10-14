@@ -113,34 +113,38 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
     with tab1:
         st.header("🎤 Audio Transcription & Translation")
         
-        # Load train.csv for expected values (your original logic)
+        # Your original code for loading train.csv
         @st.cache_data
         def load_train_data():
             try:
                 train_df = pd.read_csv('train.csv')
-                return train_df
+                if 'path' in train_df.columns and 'text' in train_df.columns and 'text_en' in train_df.columns:
+                    return train_df
+                else:
+                    st.warning("train.csv doesn't have expected columns (path, text, text_en)")
+                    return None
             except FileNotFoundError:
                 st.warning("train.csv not found. Expected values won't be available.")
                 return None
         train_df = load_train_data()
         
-        # Check for libraries (your original logic)
+        # Your original code for checking libraries
         try:
             import whisper
             from transformers import pipeline
             import torch
             libraries_available = True
         except ImportError as e:
-            st.error(f"❌ Whisper or Transformers library not found: {e}")
+            st.error(f"❌ Critical libraries are missing: {e}")
             libraries_available = False
         
         if libraries_available:
-            # Model selection and UI (your original logic)
+            # Your original UI layout
             col1, col2 = st.columns(2)
             with col1:
-                whisper_model_size = st.selectbox("Select Whisper Model Size", options=["base", "small", "medium", "large"])
+                whisper_model_size = st.selectbox("Select Whisper Model Size", ["base", "small", "medium", "large"])
             with col2:
-                translation_model = st.selectbox("Select Translation Model", options=["Helsinki-NLP/opus-mt-es-en", "facebook/mbart-large-50-many-to-many-mmt"])
+                translation_model = st.selectbox("Select Translation Model", ["Helsinki-NLP/opus-mt-es-en", "facebook/mbart-large-50-many-to-many-mmt"])
             
             uploaded_file = st.file_uploader("Upload a WAV audio file", type=['wav'])
             st.markdown("---")
@@ -152,8 +156,8 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                 audio_files = []
                 if os.path.exists(local_audio_path):
                     audio_files = [f for f in os.listdir(local_audio_path) if f.endswith('.wav')]
-                selected_audio = st.selectbox("Select an audio file from corpus", options=["None"] + audio_files)
-            
+                selected_audio = st.selectbox("Select an audio file from corpus", ["None"] + audio_files)
+
             col1, col2, _ = st.columns([1, 1, 2])
             with col1:
                 transcribe_button = st.button("🎙️ Transcribe Audio", type="primary", use_container_width=True)
@@ -161,7 +165,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                 translate_button = st.button("🌐 Translate", type="secondary", use_container_width=True, 
                                            disabled=not st.session_state.get('transcription_done', False))
             
-            # Initialize session state (your original logic + ONE ADDITION)
+            # Your original session state initialization, with ONE addition
             if 'transcription_done' not in st.session_state:
                 st.session_state.transcription_done = False
                 st.session_state.transcription = ""
@@ -169,24 +173,27 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                 st.session_state.audio_path = ""
                 st.session_state.audio_for_playback = None # <-- ONLY ADDITION
 
-            # Transcription logic (your original logic + ONE ADDITION)
+            # Your original transcription logic, with ONE addition
             if transcribe_button:
-                st.session_state.translation = "" # Clear previous translation
+                st.session_state.translation = ""
                 audio_to_process = None
+                audio_path_for_lookup = None
                 
                 if uploaded_file is not None:
                     temp_path = f"temp_{uploaded_file.name}"
                     with open(temp_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
                     audio_to_process = temp_path
-                    st.session_state.audio_path = uploaded_file.name
+                    audio_path_for_lookup = uploaded_file.name
                 elif selected_audio != "None":
                     audio_to_process = os.path.join(local_audio_path, selected_audio)
-                    st.session_state.audio_path = f"local_corpus/audio/{selected_audio}"
+                    audio_path_for_lookup = f"local_corpus/audio/{selected_audio}"
                 
                 if audio_to_process:
                     st.session_state.audio_for_playback = audio_to_process # <-- ONLY ADDITION
-                    with st.spinner("Transcribing audio with Whisper..."):
+                    st.session_state.audio_path = audio_path_for_lookup # This is your original line
+                    
+                    with st.spinner("Transcribing..."):
                         @st.cache_resource
                         def load_whisper(model_size): return whisper.load_model(model_size)
                         
@@ -196,11 +203,11 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                         st.session_state.transcription_done = True
                         st.rerun()
                 else:
-                    st.warning("Please upload an audio file or select one from the corpus.")
-
-            # Translation logic (your original logic - NO CHANGES)
+                    st.warning("Please upload or select an audio file.")
+            
+            # Your original translation logic - NO CHANGES
             if translate_button and st.session_state.transcription_done:
-                with st.spinner("Translating to English..."):
+                with st.spinner("Translating..."):
                     @st.cache_resource
                     def load_translator(model_name):
                         if "mbart" in model_name:
@@ -212,26 +219,24 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                     st.session_state.translation = translation_result[0]['translation_text']
                     st.rerun()
 
-            # Results Display (your original logic + ONE ADDITION)
+            # Your original results display, with ONE addition
             if st.session_state.transcription_done:
                 st.markdown("---")
                 st.subheader("📊 Results")
-
+                
                 # --- START OF ADDED AUDIO PLAYER BLOCK ---
                 if st.session_state.audio_for_playback and os.path.exists(st.session_state.audio_for_playback):
                     with open(st.session_state.audio_for_playback, 'rb') as audio_file:
                         st.audio(audio_file.read(), format='audio/wav')
                 # --- END OF ADDED AUDIO PLAYER BLOCK ---
 
-                # Your original logic for finding and displaying expected text and similarity
-                expected_text = ""
-                expected_translation = ""
+                # Your original logic for looking up and displaying all text and similarity - NO CHANGES
+                expected_text, expected_translation = "", ""
                 if train_df is not None and st.session_state.audio_path:
-                    lookup_id = os.path.basename(st.session_state.audio_path).replace('.wav', '')
-                    matching_row = train_df[train_df['path'].str.contains(lookup_id, case=False, na=False)]
-                    if not matching_row.empty:
-                        expected_text = matching_row.iloc[0]['text']
-                        expected_translation = matching_row.iloc[0]['text_en']
+                    match = train_df[train_df['path'].str.contains(os.path.basename(st.session_state.audio_path).replace('.wav', ''), na=False)]
+                    if not match.empty:
+                        expected_text = match.iloc[0]['text']
+                        expected_translation = match.iloc[0]['text_en']
 
                 col1, col2 = st.columns(2)
                 with col1:
@@ -255,7 +260,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                             similarity = SequenceMatcher(None, clean_string(st.session_state.translation), clean_string(expected_translation)).ratio()
                             st.metric("Similarity", f"{similarity:.2%}")
                     else:
-                        st.info("Click 'Translate' button to generate translation.")
+                        st.info("Click 'Translate' button to generate.")
       # ==========================
     # VIEW 1: Model Metrics Overview
     # ==========================
