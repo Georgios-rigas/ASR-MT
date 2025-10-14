@@ -109,258 +109,166 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
         os.environ["IMAGEIO_FFMPEG_EXE"] = ioff.get_ffmpeg_exe()
     except Exception as e:
         print("FFmpeg setup error:", e)
-    with tab1:
+with tab1:
         st.header("🎤 Audio Transcription & Translation")
 
-        # Force module loading with explicit path
+        # Your original code for loading train.csv and checking libraries
         import sys
         sys.path.insert(0, '/opt/conda/lib/python3.12/site-packages')
+        from difflib import SequenceMatcher
 
-        # Try to load train.csv for expected values
         @st.cache_data
         def load_train_data():
-            """Load train.csv for expected transcriptions and translations"""
             try:
                 train_df = pd.read_csv('train.csv')
-                # Check if it has the expected columns
-                if 'path' in train_df.columns and 'text' in train_df.columns and 'text_en' in train_df.columns:
-                    return train_df
-                else:
-                    st.warning("train.csv doesn't have expected columns (path, text, text_en)")
-                    return None
+                return train_df
             except FileNotFoundError:
                 st.warning("train.csv not found. Expected values won't be available.")
                 return None
-
         train_df = load_train_data()
 
-        # Test if Whisper is available
-        whisper_available = False
-        try:
-            import whisper
-            whisper_available = True
-            st.success("✅ Whisper loaded successfully")
-        except ImportError as e:
-            st.error(f"❌ Whisper import error: {e}")
-
-        # Test if transformers is available
-        transformers_available = False
+        libraries_available = False
         try:
             from transformers import pipeline
             import torch
-            transformers_available = True
-            st.success("✅ Transformers loaded successfully")
+            from insanely_fast_whisper import pipeline as whisper_pipeline
+            import time
+            libraries_available = True
+            st.success("✅ All required libraries loaded successfully.")
         except ImportError as e:
-            st.error(f"❌ Transformers import error: {e}")
+            st.error(f"❌ A critical library is missing. Please install 'insanely-fast-whisper'. Error: {e}")
 
-        if whisper_available and transformers_available:
-            import whisper
-            from transformers import pipeline
-            import torch
-
-            # Model selection
+        if libraries_available:
+            # Your original UI layout
             col1, col2 = st.columns(2)
             with col1:
-                whisper_model_size = st.selectbox(
-                    "Select Whisper Model Size",
-                    options=["base", "small", "medium", "large"],
-                    help="Larger models are more accurate but slower"
-                )
-
+                whisper_model_size = st.selectbox("Select Whisper Model Size", options=["base", "small", "medium", "large"])
             with col2:
-                translation_model = st.selectbox(
-                    "Select Translation Model",
-                    options=["opus-mt-es-en", "mbart-large-50-many-to-many-mmt"],
-                    help="Model for Spanish to English translation"
-                )
+                translation_model = st.selectbox("Select Translation Model", options=["Helsinki-NLP/opus-mt-es-en", "facebook/mbart-large-50-many-to-many-mmt"])
 
-            # File upload
-            uploaded_file = st.file_uploader(
-                "Upload a WAV audio file",
-                type=['wav'],
-                help="Upload a Spanish audio file for transcription and translation"
-            )
-
-            # Alternative: Select from local_corpus
+            uploaded_file = st.file_uploader("Upload a WAV audio file", type=['wav'])
             st.markdown("---")
 
-            # MODIFICATION: Place selection in a smaller column
             col1, _ = st.columns(2)
             with col1:
                 st.subheader("Or select from local corpus")
-                import os
                 base_dir = os.path.dirname(os.path.abspath(__file__))
                 local_audio_path = os.path.join(base_dir, "local_corpus", "audio")
+                audio_files = [f for f in os.listdir(local_audio_path) if os.path.isfile(os.path.join(local_audio_path, f)) and f.endswith('.wav')] if os.path.exists(local_audio_path) else []
+                selected_audio = st.selectbox("Select an audio file from corpus", options=["None"] + audio_files)
 
-                audio_files = []
-
-                if os.path.exists(local_audio_path):
-                    audio_files = [f for f in os.listdir(local_audio_path) if f.endswith('.wav')]
-                    if audio_files:
-                        selected_audio = st.selectbox(
-                            "Select an audio file from corpus",
-                            options=["None"] + audio_files
-                        )
-                    else:
-                        st.info("No WAV files found in local_corpus/audio/")
-                        selected_audio = "None"
-                else:
-                    st.info("local_corpus/audio/ directory not found")
-                    selected_audio = "None"
-
-            # Process buttons - sized to be smaller
             col1, col2, _ = st.columns([1, 1, 2])
-
             with col1:
                 transcribe_button = st.button("🎙️ Transcribe Audio", type="primary", use_container_width=True)
-
             with col2:
-                translate_button = st.button("🌐 Translate", type="secondary", use_container_width=True, 
+                translate_button = st.button("🌐 Translate", type="secondary", use_container_width=True,
                                            disabled=not st.session_state.get('transcription_done', False))
 
-            # Initialize session state for transcription
+            # Your original session state, modified to hold the full transcription result
             if 'transcription_done' not in st.session_state:
                 st.session_state.transcription_done = False
-                st.session_state.transcription = ""
+                st.session_state.transcription_result = None # Will hold text and timestamps
                 st.session_state.translation = ""
                 st.session_state.audio_path = ""
-                st.session_state.path_for_playback = None # <-- ONLY ADDITION FOR PLAYER
+                st.session_state.path_for_playback = None
 
-            # Process transcription
+            # Your original transcription logic, modified to get timestamps
             if transcribe_button:
-                st.session_state.translation = "" # Clear previous translation
-
+                st.session_state.translation = ""
                 audio_to_process = None
-                audio_path = None
-
-                # Determine which audio to process
+                
                 if uploaded_file is not None:
-                    # Save uploaded file temporarily
                     temp_path = f"temp_{uploaded_file.name}"
-                    with open(temp_path, "wb") as f:
-                        f.write(uploaded_file.getbuffer())
+                    with open(temp_path, "wb") as f: f.write(uploaded_file.getbuffer())
                     audio_to_process = temp_path
-                    audio_path = uploaded_file.name
+                    st.session_state.audio_path = uploaded_file.name
                 elif selected_audio != "None":
                     audio_to_process = os.path.join(local_audio_path, selected_audio)
-                    audio_path = f"local_corpus/audio/{selected_audio}"
+                    st.session_state.audio_path = f"local_corpus/audio/{selected_audio}"
 
                 if audio_to_process:
-                    st.session_state.path_for_playback = audio_to_process # <-- ONLY ADDITION FOR PLAYER
-                    with st.spinner("Transcribing audio with Whisper..."):
-                        # Load Whisper model
+                    st.session_state.path_for_playback = audio_to_process
+                    with st.spinner("Transcribing with word timestamps..."):
                         @st.cache_resource
-                        def load_whisper(model_size):
-                            return whisper.load_model(model_size)
-
-                        try:
-                            whisper_model = load_whisper(whisper_model_size)
-                            result = whisper_model.transcribe(audio_to_process, language="es")
-                            st.session_state.transcription = result["text"]
-                            st.session_state.transcription_done = True
-                            st.session_state.audio_path = audio_path
-                            st.rerun()
-
-                        except Exception as e:
-                            st.error(f"Error transcribing audio: {str(e)}")
-
-                        finally:
-                            # Clean up temp file if it was uploaded
-                            if uploaded_file is not None and os.path.exists(temp_path):
-                                os.remove(temp_path)
+                        def load_whisper_pipeline(model_size):
+                            return whisper_pipeline(f"openai/whisper-{model_size}", torch_dtype=torch.float16, device="cuda:0")
+                        
+                        pipe = load_whisper_pipeline(whisper_model_size)
+                        outputs = pipe(audio_to_process, return_timestamps='word', chunk_length_s=30, batch_size=8)
+                        
+                        st.session_state.transcription_result = outputs
+                        st.session_state.transcription_done = True
+                        st.rerun()
                 else:
-                    st.warning("Please upload an audio file or select one from the corpus.")
+                    st.warning("Please upload or select an audio file.")
 
-            # Process translation
+            # Your original translation logic, adapted slightly
             if translate_button and st.session_state.transcription_done:
-                with st.spinner("Translating to English..."):
-                    # Load translation model
+                with st.spinner("Translating..."):
                     @st.cache_resource
                     def load_translator(model_name):
-                        if model_name == "opus-mt-es-en":
-                            return pipeline("translation", model="Helsinki-NLP/opus-mt-es-en")
-                        else:
-                            return pipeline("translation", model="facebook/mbart-large-50-many-to-many-mmt", 
-                                          src_lang="es_XX", tgt_lang="en_XX")
+                        if "mbart" in model_name:
+                            return pipeline("translation", model=model_name, src_lang="es_XX", tgt_lang="en_XX")
+                        return pipeline("translation", model=model_name)
+                    
+                    translator = load_translator(translation_model)
+                    # Use the full text from the stored result
+                    full_text = st.session_state.transcription_result["text"]
+                    translation_output = translator(full_text, max_length=512)
+                    st.session_state.translation = translation_output[0]['translation_text']
+                    st.rerun()
 
-                    try:
-                        translator = load_translator(translation_model)
-                        translation_result = translator(st.session_state.transcription, max_length=512)
-                        st.session_state.translation = translation_result[0]['translation_text']
-                        st.rerun()
-
-                    except Exception as e:
-                        st.error(f"Error translating: {str(e)}")
-
-            # Display results if we have them
+            # Your original results display, now with the simulation loop
             if st.session_state.transcription_done:
                 st.markdown("---")
                 st.subheader("📊 Results")
 
-                # --- START OF ADDED AUDIO PLAYER BLOCK ---
-                if st.session_state.path_for_playback and os.path.exists(st.session_state.path_for_playback):
+                if st.session_state.path_for_playback:
                     with open(st.session_state.path_for_playback, 'rb') as audio_file:
                         st.audio(audio_file.read(), format='audio/wav')
-                # --- END OF ADDED AUDIO PLAYER BLOCK ---
 
-                # Get expected values if available
-                expected_text = ""
-                expected_translation = ""
-
+                expected_text, expected_translation = "", ""
                 if train_df is not None and st.session_state.audio_path:
-                    matching_row = train_df[train_df['path'].str.contains(
-                        os.path.basename(st.session_state.audio_path).replace('.wav', ''), 
-                        case=False, na=False
-                    )]
+                    match = train_df[train_df['path'].str.contains(os.path.basename(st.session_state.audio_path).replace('.wav', ''), na=False)]
+                    if not match.empty:
+                        expected_text = match.iloc[0]['text']
+                        expected_translation = match.iloc[0]['text_en']
 
-                    if not matching_row.empty:
-                        expected_text = matching_row.iloc[0]['text']
-                        expected_translation = matching_row.iloc[0]['text_en']
-
-                # Display transcription and translation with expected values
                 col1, col2 = st.columns(2)
-
                 with col1:
                     st.markdown("### Spanish Transcription")
+                    st.markdown("**Generated (simulated real-time):**")
+                    transcription_placeholder = st.empty()
+                    
+                    full_text, last_timestamp = "", 0.0
+                    for chunk in st.session_state.transcription_result["chunks"]:
+                        sleep_duration = chunk['timestamp'][0] - last_timestamp
+                        if sleep_duration > 0: time.sleep(sleep_duration)
+                        full_text += chunk['text']
+                        transcription_placeholder.info(full_text)
+                        last_timestamp = chunk['timestamp'][0]
+                    
+                    final_transcription = st.session_state.transcription_result["text"]
+                    transcription_placeholder.info(final_transcription)
 
-                    # Predicted transcription
-                    st.markdown("**Generated:**")
-                    st.info(st.session_state.transcription)
-
-                    # Expected transcription (if available)
                     if expected_text:
                         st.markdown("**Expected:**")
                         st.success(expected_text)
-
-                        # Calculate similarity
-                        from difflib import SequenceMatcher
-                        similarity = SequenceMatcher(None, 
-                                                    st.session_state.transcription.lower(), 
-                                                    expected_text.lower()).ratio()
+                        similarity = SequenceMatcher(None, clean_string(final_transcription), clean_string(expected_text)).ratio()
                         st.metric("Similarity", f"{similarity:.2%}")
-                
+
                 with col2:
                     st.markdown("### English Translation")
-                    
+                    st.markdown("**Generated:**")
                     if st.session_state.translation:
-                        # Predicted translation
-                        st.markdown("**Generated:**")
                         st.info(st.session_state.translation)
-                        
-                        # Expected translation (if available)
                         if expected_translation:
                             st.markdown("**Expected:**")
                             st.success(expected_translation)
-                            
-                            # Calculate similarity
-                            from difflib import SequenceMatcher
-                            similarity = SequenceMatcher(None, 
-                                                        st.session_state.translation.lower(), 
-                                                        expected_translation.lower()).ratio()
+                            similarity = SequenceMatcher(None, clean_string(st.session_state.translation), clean_string(expected_translation)).ratio()
                             st.metric("Similarity", f"{similarity:.2%}")
                     else:
-                        st.markdown("**Generated:**")
-                        st.info("Click 'Translate' button to generate translation.")
+                        st.info("Click 'Translate' to generate.")
       # ==========================
     # VIEW 1: Model Metrics Overview
     # ==========================

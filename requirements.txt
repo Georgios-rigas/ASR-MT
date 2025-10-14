@@ -8,3 +8,4 @@ torch
 ffmpeg-python
 jiwer
 sentencepiece
+insanely-fast-whisper
