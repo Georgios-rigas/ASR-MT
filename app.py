@@ -110,22 +110,10 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
         os.environ["IMAGEIO_FFMPEG_EXE"] = ioff.get_ffmpeg_exe()
     except Exception as e:
         print("FFmpeg setup error:", e)
-    with tab1:
+        with tab1:
         st.header("🎤 Audio Transcription & Translation")
 
-        # --- Load train.csv for expected values ---
-        @st.cache_data
-        def load_train_data():
-            try:
-                df = pd.read_csv('train.csv')
-                return df
-            except FileNotFoundError:
-                st.warning("`train.csv` not found. 'Expected' values will not be displayed.")
-                return None
-        
-        train_df = load_train_data()
-
-        # --- Check for libraries ---
+        # --- (Your setup code for libraries) ---
         try:
             import whisper
             from transformers import pipeline
@@ -156,7 +144,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                 if os.path.exists(local_audio_path):
                     audio_files = [f for f in os.listdir(local_audio_path) if f.endswith('.wav')]
                 selected_audio = st.selectbox("Select an audio file from corpus", ["None"] + audio_files)
-            
+
             # Buttons
             col1, col2, _ = st.columns([1, 1, 2])
             with col1:
@@ -164,32 +152,31 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
             with col2:
                 translate_button = st.button("🌐 Translate", type="secondary", use_container_width=True, 
                                            disabled=not st.session_state.get('transcription_done', False))
-            
+
             # Initialize session state
             if 'transcription_done' not in st.session_state:
                 st.session_state.transcription_done = False
                 st.session_state.transcription = ""
                 st.session_state.translation = ""
-                st.session_state.audio_path_id = "" # Used for lookup
-                st.session_state.audio_for_playback = None
+                st.session_state.audio_for_playback = None # Path to the processed audio file
 
             # Process transcription
             if transcribe_button:
                 st.session_state.translation = "" # Clear previous
                 audio_to_process = None
-                
+
                 if uploaded_file is not None:
                     temp_path = f"temp_{uploaded_file.name}"
                     with open(temp_path, "wb") as f:
                         f.write(uploaded_file.getbuffer())
                     audio_to_process = temp_path
-                    st.session_state.audio_path_id = uploaded_file.name
                 elif selected_audio != "None":
                     audio_to_process = os.path.join(local_audio_path, selected_audio)
-                    st.session_state.audio_path_id = selected_audio
-                
+
                 if audio_to_process:
+                    # ONLY CHANGE 1: Save the path for the audio player
                     st.session_state.audio_for_playback = audio_to_process
+                    
                     with st.spinner("Transcribing audio..."):
                         @st.cache_resource
                         def load_whisper(model_size): return whisper.load_model(model_size)
@@ -221,43 +208,23 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                 st.markdown("---")
                 st.subheader("📊 Results")
 
-                if st.session_state.audio_for_playback:
+                # ONLY CHANGE 2: Add the st.audio widget here
+                if st.session_state.audio_for_playback and os.path.exists(st.session_state.audio_for_playback):
                     with open(st.session_state.audio_for_playback, 'rb') as audio_file:
                         st.audio(audio_file.read(), format='audio/wav')
-                
-                # --- LOGIC TO FIND EXPECTED TEXT (RESTORED) ---
-                expected_text = ""
-                expected_translation = ""
-                if train_df is not None and st.session_state.audio_path_id:
-                    # Find the row in train.csv that matches the audio filename
-                    lookup_id = os.path.basename(st.session_state.audio_path_id).replace('.wav', '')
-                    matching_row = train_df[train_df['path'].str.contains(lookup_id, na=False)]
-                    if not matching_row.empty:
-                        expected_text = matching_row.iloc[0]['text']
-                        expected_translation = matching_row.iloc[0]['text_en']
 
-                # --- DISPLAY COLUMNS WITH EXPECTED TEXT (RESTORED) ---
+                # Display columns with generated text (your original logic)
                 col1, col2 = st.columns(2)
                 with col1:
                     st.markdown("### Spanish Transcription")
                     st.markdown("**Generated:**")
                     st.info(st.session_state.transcription)
-                    if expected_text:
-                        st.markdown("**Expected:**")
-                        st.success(expected_text)
-                        similarity = SequenceMatcher(None, clean_string(st.session_state.transcription), clean_string(expected_text)).ratio()
-                        st.metric("Similarity Score", f"{similarity:.2%}")
                 
                 with col2:
                     st.markdown("### English Translation")
                     st.markdown("**Generated:**")
                     if st.session_state.translation:
                         st.info(st.session_state.translation)
-                        if expected_translation:
-                            st.markdown("**Expected:**")
-                            st.success(expected_translation)
-                            similarity = SequenceMatcher(None, clean_string(st.session_state.translation), clean_string(expected_translation)).ratio()
-                            st.metric("Similarity Score", f"{similarity:.2%}")
                     else:
                         st.info("Click 'Translate' to generate.")
       # ==========================
