@@ -110,7 +110,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
         os.environ["IMAGEIO_FFMPEG_EXE"] = ioff.get_ffmpeg_exe()
     except Exception as e:
         print("FFmpeg setup error:", e)
-        with tab1:
+    with tab1:
         st.header("🎤 Audio Transcription & Translation")
 
         # --- (Your setup code for libraries) ---
@@ -227,6 +227,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                         st.info(st.session_state.translation)
                     else:
                         st.info("Click 'Translate' to generate.")
+
       # ==========================
     # VIEW 1: Model Metrics Overview
     # ==========================
