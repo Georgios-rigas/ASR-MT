@@ -116,6 +116,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
         import sys
         sys.path.insert(0, '/opt/conda/lib/python3.12/site-packages')
         from difflib import SequenceMatcher
+        import time # Import time for the simulation
 
         @st.cache_data
         def load_train_data():
@@ -129,14 +130,13 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
 
         libraries_available = False
         try:
+            import whisper # Using the original whisper library
             from transformers import pipeline
             import torch
-            from insanely_fast_whisper import pipeline as whisper_pipeline
-            import time
             libraries_available = True
             st.success("✅ All required libraries loaded successfully.")
         except ImportError as e:
-            st.error(f"❌ A critical library is missing. Please install 'insanely-fast-whisper'. Error: {e}")
+            st.error(f"❌ A critical library is missing: {e}")
 
         if libraries_available:
             # Your original UI layout
@@ -190,13 +190,13 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                     st.session_state.path_for_playback = audio_to_process
                     with st.spinner("Transcribing with word timestamps..."):
                         @st.cache_resource
-                        def load_whisper_pipeline(model_size):
-                            return whisper_pipeline(f"openai/whisper-{model_size}", torch_dtype=torch.float16, device="cuda:0")
+                        def load_whisper(model_size): return whisper.load_model(model_size)
                         
-                        pipe = load_whisper_pipeline(whisper_model_size)
-                        outputs = pipe(audio_to_process, return_timestamps='word', chunk_length_s=30, batch_size=8)
+                        whisper_model = load_whisper(whisper_model_size)
+                        # KEY CHANGE: Use word_timestamps=True to get the data we need
+                        result = whisper_model.transcribe(audio_to_process, language="es", word_timestamps=True)
                         
-                        st.session_state.transcription_result = outputs
+                        st.session_state.transcription_result = result
                         st.session_state.transcription_done = True
                         st.rerun()
                 else:
@@ -241,12 +241,18 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
                     transcription_placeholder = st.empty()
                     
                     full_text, last_timestamp = "", 0.0
-                    for chunk in st.session_state.transcription_result["chunks"]:
-                        sleep_duration = chunk['timestamp'][0] - last_timestamp
-                        if sleep_duration > 0: time.sleep(sleep_duration)
-                        full_text += chunk['text']
-                        transcription_placeholder.info(full_text)
-                        last_timestamp = chunk['timestamp'][0]
+                    # KEY CHANGE: Loop through the segments and words from the whisper result
+                    for segment in st.session_state.transcription_result["segments"]:
+                        for word_info in segment["words"]:
+                            word = word_info['word']
+                            start_time = word_info['start']
+                            
+                            sleep_duration = start_time - last_timestamp
+                            if sleep_duration > 0: time.sleep(sleep_duration)
+                            
+                            full_text += word
+                            transcription_placeholder.info(full_text)
+                            last_timestamp = start_time
                     
                     final_transcription = st.session_state.transcription_result["text"]
                     transcription_placeholder.info(final_transcription)
