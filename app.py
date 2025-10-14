@@ -109,7 +109,7 @@ if all(df is not None for df in [metrics_df, translations_df, finetuning_example
         os.environ["IMAGEIO_FFMPEG_EXE"] = ioff.get_ffmpeg_exe()
     except Exception as e:
         print("FFmpeg setup error:", e)
-with tab1:
+    with tab1:
         st.header("🎤 Audio Transcription & Translation")
 
         # Force module loading with explicit path
